@@ -1,4 +1,5 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 // Initialize Express router
@@ -61,6 +62,71 @@ router.post("/register", async (req, res) => {
 
         res.status(500).json({
             message: "Server error during registration"
+        });
+    }
+});
+
+// Authenticate an existing user
+router.post("/login", async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validate required fields
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
+
+        // Find the user and explicitly retrieve the password hash
+        const user = await User.findOne({
+            email: email.trim().toLowerCase()
+        }).select("+password");
+
+        // Reject unrecognized email addresses
+        if (!user) {
+            return res.status(400).json({
+                message: "Incorrect email or password"
+            });
+        }
+
+        // Compare the submitted password with the stored hash
+        const isMatch = await user.isCorrectPassword(password);
+
+        // Reject incorrect passwords
+        if (!isMatch) {
+            return res.status(400).json({
+                message: "Incorrect email or password"
+            });
+        }
+
+        // Create a signed JWT containing non-sensitive user data
+        const token = jwt.sign(
+            {
+                userId: user._id.toString(),
+                username: user.username
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "1h"
+            }
+        );
+
+        // Return the token and user information without the password
+        res.status(200).json({
+            token,
+            user: {
+                _id: user._id,
+                username: user.username,
+                email: user.email
+            }
+        });
+    } catch (error) {
+        // Handle unexpected authentication errors
+        console.error("Login error:", error.message);
+
+        res.status(500).json({
+            message: "Server error during login"
         });
     }
 });
